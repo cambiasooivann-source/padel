@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="es"><head><meta charset="utf-8">
+<html lang="es"><head><meta charset="utf-8"><link rel="manifest" href="manifest.webmanifest"><meta name="theme-color" content="#0b1220"><link rel="apple-touch-icon" href="apple-touch-icon.png"><meta name="apple-mobile-web-app-capable" content="yes"><meta name="mobile-web-app-capable" content="yes"><meta name="apple-mobile-web-app-title" content="Pádel">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Pádel Champions</title><!-- v45: v44 + valores elegidos fijos (globo 1.05, contrapared 1.00, rodillas 0.60, pelota 1.10) y sin Ayudas de juego -->
 <style>
@@ -1324,4 +1324,4 @@ function padPoll(){if(!navigator.getGamepads)return;let gp;try{gp=[...navigator.
 /* ===== FIN MULTIJUGADOR ===== */
 let lt=0;function lp(t){if(SG.fl&&t-lt<9){requestAnimationFrame(lp);return}const dt=Math.min(.05,(t-lt)/1000);lt=t;DT=dt;if(RPL)rpStep();hst-=dt;const n=paused||RPL||hst>0||MP.guest?0:Math.ceil(dt/.01)||1,gv=MP.on?1:(+SG.gv>=.6&&+SG.gv<=1?+SG.gv:1);for(let i=0;i<n;i++)step(dt*gv/n);if(!RPL&&(st==='rally'||st==='point'||st==='serve'&&toss))rec();if(MP.guest)mpGuestStep(dt);else if(MP.on&&MP.host&&!MP.local)mpSnap(dt);padPoll();parts(dt);draw();requestAnimationFrame(lp)}
 requestAnimationFrame(lp);
-</script></body></html>
+</script><script>if('serviceWorker' in navigator&&location.protocol==='https:')addEventListener('load',()=>navigator.serviceWorker.register('sw.js').catch(()=>{}))</script></body></html>
