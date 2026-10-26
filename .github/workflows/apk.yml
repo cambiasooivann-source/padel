@@ -1,4 +1,4 @@
-ame: App Android (APK)
+name: App Android (APK)
 
 on:
   push:
