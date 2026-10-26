@@ -1,0 +1,229 @@
+ame: App Android (APK)
+
+on:
+  push:
+    branches: [main]
+    paths: ['index.html', 'icon-192.png', '.github/workflows/apk.yml']
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  apk:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.7'
+
+      - name: Armar el proyecto Android
+        run: |
+          set -e
+          A=android
+          mkdir -p $A/app/src/main/java/io/github/cambiasooivann/padel $A/app/src/main/assets/lib $A/app/src/main/res/mipmap-xxxhdpi
+          cp icon-192.png $A/app/src/main/res/mipmap-xxxhdpi/ic_launcher.png
+
+          cat > $A/settings.gradle <<'EOF'
+          pluginManagement { repositories { google(); mavenCentral(); gradlePluginPortal() } }
+          dependencyResolutionManagement { repositories { google(); mavenCentral() } }
+          rootProject.name = 'PadelChampions'
+          include ':app'
+          EOF
+
+          cat > $A/build.gradle <<'EOF'
+          plugins { id 'com.android.application' version '8.5.2' apply false }
+          EOF
+
+          cat > $A/gradle.properties <<'EOF'
+          android.useAndroidX=true
+          org.gradle.jvmargs=-Xmx2g
+          EOF
+
+          cat > $A/app/build.gradle <<'EOF'
+          plugins { id 'com.android.application' }
+          def ks = System.getenv('KS_FILE')
+          android {
+            namespace 'io.github.cambiasooivann.padel'
+            compileSdk 34
+            defaultConfig {
+              applicationId 'io.github.cambiasooivann.padel'
+              minSdk 24
+              targetSdk 34
+              versionCode((System.getenv('GITHUB_RUN_NUMBER') ?: '1').toInteger())
+              versionName '1.' + (System.getenv('GITHUB_RUN_NUMBER') ?: '0')
+            }
+            signingConfigs {
+              fija {
+                storeFile file(ks ?: 'sin-clave.jks')
+                storePassword System.getenv('KS_PASS') ?: ''
+                keyAlias 'padel'
+                keyPassword System.getenv('KS_PASS') ?: ''
+              }
+            }
+            buildTypes {
+              release {
+                minifyEnabled false
+                signingConfig ks ? signingConfigs.fija : signingConfigs.debug
+              }
+            }
+            lint { checkReleaseBuilds false; abortOnError false }
+            compileOptions { sourceCompatibility JavaVersion.VERSION_17; targetCompatibility JavaVersion.VERSION_17 }
+          }
+          dependencies { implementation 'androidx.webkit:webkit:1.11.0' }
+          EOF
+
+          cat > $A/app/src/main/AndroidManifest.xml <<'EOF'
+          <?xml version="1.0" encoding="utf-8"?>
+          <manifest xmlns:android="http://schemas.android.com/apk/res/android">
+            <uses-permission android:name="android.permission.INTERNET"/>
+            <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE"/>
+            <uses-permission android:name="android.permission.VIBRATE"/>
+            <application android:label="Pádel Champions" android:icon="@mipmap/ic_launcher"
+                android:hardwareAccelerated="true" android:allowBackup="true"
+                android:theme="@android:style/Theme.Black.NoTitleBar.Fullscreen">
+              <activity android:name=".MainActivity" android:exported="true"
+                  android:screenOrientation="sensorLandscape" android:launchMode="singleTask"
+                  android:configChanges="orientation|screenSize|smallestScreenSize|screenLayout|keyboard|keyboardHidden|navigation|uiMode">
+                <intent-filter>
+                  <action android:name="android.intent.action.MAIN"/>
+                  <category android:name="android.intent.category.LAUNCHER"/>
+                </intent-filter>
+              </activity>
+            </application>
+          </manifest>
+          EOF
+
+          cat > $A/app/src/main/java/io/github/cambiasooivann/padel/MainActivity.java <<'EOF'
+          package io.github.cambiasooivann.padel;
+
+          import android.app.Activity;
+          import android.content.Intent;
+          import android.net.Uri;
+          import android.os.Bundle;
+          import android.view.View;
+          import android.view.WindowManager;
+          import android.webkit.WebChromeClient;
+          import android.webkit.WebResourceRequest;
+          import android.webkit.WebResourceResponse;
+          import android.webkit.WebSettings;
+          import android.webkit.WebView;
+          import android.webkit.WebViewClient;
+          import androidx.webkit.WebViewAssetLoader;
+
+          public class MainActivity extends Activity {
+            private WebView w;
+            private long lastBack = 0;
+
+            @Override protected void onCreate(Bundle b) {
+              super.onCreate(b);
+              getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
+              w = new WebView(this);
+              setContentView(w);
+              ocultarBarras();
+              final WebViewAssetLoader loader = new WebViewAssetLoader.Builder()
+                  .addPathHandler("/assets/", new WebViewAssetLoader.AssetsPathHandler(this)).build();
+              WebSettings s = w.getSettings();
+              s.setJavaScriptEnabled(true);
+              s.setDomStorageEnabled(true);
+              s.setDatabaseEnabled(true);
+              s.setMediaPlaybackRequiresUserGesture(false);
+              s.setAllowFileAccess(false);
+              w.setWebChromeClient(new WebChromeClient());
+              w.setWebViewClient(new WebViewClient() {
+                @Override public WebResourceResponse shouldInterceptRequest(WebView v, WebResourceRequest r) {
+                  return loader.shouldInterceptRequest(r.getUrl());
+                }
+                @Override public boolean shouldOverrideUrlLoading(WebView v, WebResourceRequest r) {
+                  Uri u = r.getUrl();
+                  if ("appassets.androidplatform.net".equals(u.getHost())) return false;
+                  try { startActivity(new Intent(Intent.ACTION_VIEW, u)); } catch (Exception e) { }
+                  return true;
+                }
+              });
+              if (b != null) w.restoreState(b);
+              else w.loadUrl("https://appassets.androidplatform.net/assets/index.html");
+            }
+
+            private void ocultarBarras() {
+              getWindow().getDecorView().setSystemUiVisibility(
+                  View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY | View.SYSTEM_UI_FLAG_FULLSCREEN
+                  | View.SYSTEM_UI_FLAG_HIDE_NAVIGATION | View.SYSTEM_UI_FLAG_LAYOUT_STABLE
+                  | View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION | View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN);
+            }
+
+            @Override public void onWindowFocusChanged(boolean f) { super.onWindowFocusChanged(f); if (f) ocultarBarras(); }
+            @Override protected void onSaveInstanceState(Bundle o) { super.onSaveInstanceState(o); w.saveState(o); }
+            @Override protected void onPause() { super.onPause(); w.onPause(); }
+            @Override protected void onResume() { super.onResume(); w.onResume(); ocultarBarras(); }
+
+            // Atrás: abre la pausa del juego; dos veces seguidas sale de la app
+            @Override public void onBackPressed() {
+              long t = System.currentTimeMillis();
+              if (t - lastBack < 600) { finish(); return; }
+              lastBack = t;
+              w.evaluateJavascript("(function(){var q=document.getElementById('qt');if(q&&getComputedStyle(q).display!=='none'){q.click()}})()", null);
+            }
+          }
+          EOF
+
+      - name: Copiar el juego y sus librerías 3D dentro de la app (funciona sin internet)
+        run: |
+          python3 - <<'EOF'
+          import re, hashlib, urllib.request, pathlib
+          A = pathlib.Path('android/app/src/main/assets')
+          s = open('index.html', encoding='utf8').read()
+          # sin service worker dentro de la app
+          s = re.sub(r"<script>if\('serviceWorker' in navigator[^<]*</script>", '', s)
+          urls = sorted(set(re.findall(r"https://(?:cdnjs\.cloudflare\.com|cdn\.jsdelivr\.net|unpkg\.com)/[^\s'\"\\<>]+\.js(?=['\"\\])", s)), key=len, reverse=True)
+          for u in urls:
+              if 'peerjs' in u: continue
+              name = pathlib.PurePosixPath(u).name
+              if name == 'three.min.js': local = 'lib/three.min.js'
+              else: local = 'lib/' + hashlib.md5(u.encode()).hexdigest()[:6] + '_' + name
+              try:
+                  if not (A / local).exists():
+                      data = urllib.request.urlopen(u, timeout=60).read()
+                      (A / local).write_bytes(data)
+                  s = s.replace(u, local)
+                  print('incluida', u)
+              except Exception as e:
+                  print('queda online', u, e)
+          (A / 'index.html').write_text(s, encoding='utf8')
+          EOF
+
+      - name: Clave de firma (siempre la misma, para poder actualizar sin desinstalar)
+        env:
+          KEYSTORE: ${{ secrets.KEYSTORE }}
+          KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+        run: |
+          if [ -n "$KEYSTORE" ]; then
+            echo "$KEYSTORE" | base64 -d > $RUNNER_TEMP/padel.jks
+            echo "KS_FILE=$RUNNER_TEMP/padel.jks" >> $GITHUB_ENV
+            echo "KS_PASS=$KEYSTORE_PASSWORD" >> $GITHUB_ENV
+            echo "Firmando con la clave fija"
+          else
+            echo "::warning::Falta el secreto KEYSTORE: se firma con una clave temporal y para actualizar habrá que desinstalar"
+          fi
+
+      - name: Compilar el APK
+        run: |
+          cd android
+          gradle assembleRelease --no-daemon
+          cp app/build/outputs/apk/release/app-release.apk ../PadelChampions.apk
+
+      - name: Publicar en Releases
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: app-${{ github.run_number }}
+          name: Pádel Champions (app ${{ github.run_number }})
+          body: Descargá PadelChampions.apk desde el celular e instalalo.
+          files: PadelChampions.apk
+          make_latest: true
